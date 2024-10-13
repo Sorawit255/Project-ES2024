@@ -37,7 +37,8 @@ void setup() {
 
   // กำหนดฟังก์ชันที่จะเรียกเมื่อเข้าเว็บเซิร์ฟเวอร์
   server.on("/", handleRoot);   // หน้าหลัก  
-  server.on("/history", handleHistory); 
+  server.on("/history", handleHistory);
+  server.on("/updateToken", HTTP_POST, handleUpdateToken); 
   server.begin();     
   Serial.println("HTTP server started");
 }
@@ -121,8 +122,30 @@ void handleHistory() {
   html += "<pre>" + historyLog + "</pre>"; 
   html += "<a href='/'>กลับไปยังหน้าหลัก</a>";
   html += "</body></html>";
- 
+
+  // ฟอร์มใส่ token
+  html += "<h2>เปลี่ยน LINE Notify Token</h2>";
+  html += "<form action='/updateToken' method='POST'>";
+  html += "LINE Notify Token: <input type='text' name='token'><br>";
+  html += "<button type='submit'>อัปเดต Token</button>";
+  html += "</form>";
   server.send(200, "text/html", html);
 }
 
+// อัพเดท Token
+void handleUpdateToken() {
+  if (server.hasArg("token")) {  // ตรวจสอบว่ามีการส่ง token ใหม่มาจากฟอร์มหรือไม่
+    lineNotifyToken = server.arg("token");  // อัปเดตตัวแปร lineNotifyToken
+    Serial.println("LINE Notify Token อัปเดตเรียบร้อย: " + lineNotifyToken);
+   
+    // ส่งข้อความแจ้งว่าการอัปเดตสำเร็จ
+    String html = "<html><head><meta charset='UTF-8'><title>อัปเดต Token สำเร็จ</title></head><body>";
+    html += "<h1>อัปเดต Token เรียบร้อยแล้ว</h1>";
+    html += "<a href='/'>กลับไปยังหน้าหลัก</a>";
+    html += "</body></html>";
+    server.send(200, "text/html", html);
+  } else {
+    server.send(400, "text/plain", "Bad Request: Token is missing");
+  }
+}
 ```
