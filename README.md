@@ -2,6 +2,9 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
+#include "FS.h"
+#include "SPIFFS.h"
+#include "html.h"  // รวมไฟล์ html.h
 
 const int pingPin = 13; // Trig
 const int inPin = 12;   // Echo
@@ -12,12 +15,11 @@ const char* password = "12345678";
 String lineNotifyToken = "goMw6x6A4hlet9170QyOn4DAFFmfNnu59h83rax8F9z"; 
 
 long lastNotified = 0;    
-const int notificationInterval = 100; 
+const int notificationInterval = 10000; // หน่วงการแจ้งเตือน 10 วินาที
 
 WebServer server(80); 
 long distanceCm = 0;   
-bool detecting = false;
-String historyLog = ""; // เก็บประวัติ
+bool detecting = false; // ควบคุมการตรวจจับ
 
 void setup() {
   Serial.begin(9600);
@@ -31,6 +33,12 @@ void setup() {
   Serial.println("Connected to WiFi");
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
+
+  // เริ่ม SPIFFS
+  if(!SPIFFS.begin(true)){
+    Serial.println("An Error has occurred while mounting SPIFFS");
+    return;
+  }
 
   // กำหนดฟังก์ชันที่จะเรียกเมื่อเข้าเว็บเซิร์ฟเวอร์
   server.on("/", handleRoot);   // หน้าหลัก
@@ -61,7 +69,10 @@ void loop() {
     Serial.print(cm);
     Serial.print(" cm");
     Serial.println();
-    historyLog += "ตรวจพบวัตถุในระยะ " + String(cm) + " cm\n";
+    
+    // บันทึกประวัติลง SPIFFS
+    saveHistory("ตรวจพบวัตถุในระยะ " + String(cm) + " cm");
+
     // ส่งการแจ้งเตือนหากระยะน้อยกว่า 100 cm และไม่มีการแจ้งเตือนซ้ำภายใน 10 วินาที
     if (cm < 100 && millis() - lastNotified > notificationInterval) {  
       sendLineNotify(cm);
@@ -73,15 +84,17 @@ void loop() {
   delay(1000);
 }
 
+// ฟังก์ชันคำนวณระยะทาง
 long microsecondsToCentimeters(long microseconds) {
   return microseconds / 29 / 2;
 }
+
 // ฟังก์ชันสำหรับแจ้งเตือนผ่าน LINE Notify
 void sendLineNotify(long distance) {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
 
-    http.begin("https://notify-api.line.me/api/notify&quot");
+    http.begin("https://notify-api.line.me/api/notify");
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
     http.addHeader("Authorization", "Bearer " + String(lineNotifyToken));
 
@@ -103,60 +116,67 @@ void sendLineNotify(long distance) {
   }
 }
 
-// ฟังก์ชันเมื่อเปิดเว็บเพจ
+// ฟังก์ชันที่ใช้จัดการเมื่อเปิดเว็บเพจ
 void handleRoot() {
-  String html = "<html><head><meta charset='UTF-8'><meta http-equiv='refresh' content='2'><title>แสดงผลตรวจจับวัตถุ</title></head><body>";
-  html += "<h1>ระยะห่างจากวัตถุ</h1>";
-  html += "<p>ระยะห่างปัจจุบัน: " + String(distanceCm) + " cm</p>";
-  html += "<form action='/start' method='POST'><button type='submit'>Start</button></form>";
-  html += "<form action='/stop' method='POST'><button type='submit'>Stop</button></form>";
-  html += "<form action='/history' method='GET'><button type='submit'>ดูประวัติ</button></form>";
- 
-  // ฟอร์มสำหรับใส่ token ใหม่
-  html += "<h2>เปลี่ยน LINE Notify Token</h2>";
-  html += "<form action='/updateToken' method='POST'>";
-  html += "LINE Notify Token: <input type='text' name='token'><br>";
-  html += "<button type='submit'>อัปเดต Token</button>";
-  html += "</form>";
-
-  html += "</body></html>";
- 
+  String html = generateHTML(distanceCm);  // เรียกฟังก์ชันจาก html.h
   server.send(200, "text/html", html);  // ส่งเว็บเพจกลับไปยังคลายเอนต์
 }
-// ปุ่ม Start
+
+// ฟังก์ชันที่ใช้เมื่อกดปุ่ม Start
 void handleStart() {
   detecting = true;  // เริ่มตรวจจับ
-  server.sendHeader("Location", "/");
+  server.sendHeader("Location", "/");   // เปลี่ยนเส้นทางกลับไปที่หน้าเว็บหลัก
   server.send(303);
 }
-// ปุ่ม Stop
+
+// ฟังก์ชันที่ใช้เมื่อกดปุ่ม Stop
 void handleStop() {
   detecting = false;  // หยุดตรวจจับ
-  server.sendHeader("Location", "/"); 
+  server.sendHeader("Location", "/");   // เปลี่ยนเส้นทางกลับไปที่หน้าเว็บหลัก
   server.send(303);
 }
 
-// หน้าเว็บประวัติ
+// ฟังก์ชันที่ใช้จัดการเมื่อเปิดหน้าเว็บประวัติ
 void handleHistory() {
-  String html = "<html><head><meta charset='UTF-8'><title>ประวัติการตรวจจับ</title></head><body>";
-  html += "<h1>ประวัติการตรวจจับ</h1>";
-  html += "<pre>" + historyLog + "</pre>"; 
-  html += "<a href='/'>กลับไปยังหน้าหลัก</a>";
-  html += "</body></html>";
- 
-  server.send(200, "text/html", html); 
+  String history = readHistory();  // อ่านประวัติการตรวจจับจาก SPIFFS
+  String html = generateHistoryHTML(history);  // เรียกฟังก์ชันจาก html.h
+  server.send(200, "text/html", html);  // ส่งเว็บเพจกลับไปยังคลายเอนต์
 }
 
+// ฟังก์ชันบันทึกประวัติลงใน SPIFFS
+void saveHistory(String data) {
+  File file = SPIFFS.open("/history.txt", FILE_APPEND);
+  if(!file){
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+  file.println(data);
+  file.close();
+}
+
+// ฟังก์ชันอ่านประวัติจาก SPIFFS
+String readHistory() {
+  File file = SPIFFS.open("/history.txt");
+  if(!file){
+    Serial.println("Failed to open file for reading");
+    return "";
+  }
+  String history = "";
+  while(file.available()){
+    history += file.readString();
+  }
+  file.close();
+  return history;
+}
+
+// ฟังก์ชันอัปเดต LINE Notify Token
 void handleUpdateToken() {
-  if (server.hasArg("token")) {  // ตรวจสอบว่ามีการส่ง token ใหม่มาจากฟอร์ม
+  if (server.hasArg("token")) {  // ตรวจสอบว่ามีการส่ง token ใหม่มาจากฟอร์มหรือไม่
     lineNotifyToken = server.arg("token");  // อัปเดตตัวแปร lineNotifyToken
     Serial.println("LINE Notify Token อัปเดตเรียบร้อย: " + lineNotifyToken);
    
     // ส่งข้อความแจ้งว่าการอัปเดตสำเร็จ
-    String html = "<html><head><meta charset='UTF-8'><title>อัปเดต Token สำเร็จ</title></head><body>";
-    html += "<h1>อัปเดต Token เรียบร้อยแล้ว</h1>";
-    html += "<a href='/'>กลับไปยังหน้าหลัก</a>";
-    html += "</body></html>";
+    String html = generateTokenUpdateHTML();  // เรียกฟังก์ชันจาก html.h
     server.send(200, "text/html", html);
   } else {
     server.send(400, "text/plain", "Bad Request: Token is missing");
