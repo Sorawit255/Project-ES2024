@@ -1,6 +1,3 @@
-# Project-ES2024
-
-```
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
@@ -18,9 +15,8 @@ const int notificationInterval = 100;
 
 WebServer server(80); 
 long distanceCm = 0;   
-bool detecting = false; // ควบคุมการตรวจจับ
-
-String historyLog = ""; // เก็บประวัติการตรวจจับ
+bool detecting = false;
+String historyLog = ""; // เก็บประวัติ
 
 void setup() {
   Serial.begin(9600);
@@ -36,8 +32,10 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   // กำหนดฟังก์ชันที่จะเรียกเมื่อเข้าเว็บเซิร์ฟเวอร์
-  server.on("/", handleRoot);   // หน้าหลัก  
-  server.on("/history", handleHistory);
+  server.on("/", handleRoot);   // หน้าหลัก
+  server.on("/start", handleStart);  
+  server.on("/stop", handleStop);    
+  server.on("/history", handleHistory); 
   server.on("/updateToken", HTTP_POST, handleUpdateToken); 
   server.begin();     
   Serial.println("HTTP server started");
@@ -73,7 +71,7 @@ void loop() {
   server.handleClient();
   delay(1000);
 }
-// สูตรคำนวณระยะทาง
+
 long microsecondsToCentimeters(long microseconds) {
   return microseconds / 29 / 2;
 }
@@ -103,6 +101,8 @@ void sendLineNotify(long distance) {
     Serial.println("WiFi Disconnected");
   }
 }
+
+// ฟังก์ชันเมื่อเปิดเว็บเพจ
 void handleRoot() {
   String html = "<html><head><meta charset='UTF-8'><meta http-equiv='refresh' content='2'><title>แสดงผลตรวจจับวัตถุ</title></head><body>";
   html += "<h1>ระยะห่างจากวัตถุ</h1>";
@@ -110,31 +110,44 @@ void handleRoot() {
   html += "<form action='/start' method='POST'><button type='submit'>Start</button></form>";
   html += "<form action='/stop' method='POST'><button type='submit'>Stop</button></form>";
   html += "<form action='/history' method='GET'><button type='submit'>ดูประวัติ</button></form>";
+ 
+  // ฟอร์มสำหรับใส่ token ใหม่
+  html += "<h2>เปลี่ยน LINE Notify Token</h2>";
+  html += "<form action='/updateToken' method='POST'>";
+  html += "LINE Notify Token: <input type='text' name='token'><br>";
+  html += "<button type='submit'>อัปเดต Token</button>";
+  html += "</form>";
+
   html += "</body></html>";
  
   server.send(200, "text/html", html);  // ส่งเว็บเพจกลับไปยังคลายเอนต์
 }
+// ปุ่ม Start
+void handleStart() {
+  detecting = true;  // เริ่มตรวจจับ
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+// ปุ่ม Stop
+void handleStop() {
+  detecting = false;  // หยุดตรวจจับ
+  server.sendHeader("Location", "/"); 
+  server.send(303);
+}
 
-//หน้าเว็บประวัติ
+// หน้าเว็บประวัติ
 void handleHistory() {
   String html = "<html><head><meta charset='UTF-8'><title>ประวัติการตรวจจับ</title></head><body>";
   html += "<h1>ประวัติการตรวจจับ</h1>";
   html += "<pre>" + historyLog + "</pre>"; 
   html += "<a href='/'>กลับไปยังหน้าหลัก</a>";
   html += "</body></html>";
-
-  // ฟอร์มใส่ token
-  html += "<h2>เปลี่ยน LINE Notify Token</h2>";
-  html += "<form action='/updateToken' method='POST'>";
-  html += "LINE Notify Token: <input type='text' name='token'><br>";
-  html += "<button type='submit'>อัปเดต Token</button>";
-  html += "</form>";
-  server.send(200, "text/html", html);
+ 
+  server.send(200, "text/html", html); 
 }
 
-// อัพเดท Token
 void handleUpdateToken() {
-  if (server.hasArg("token")) {  // ตรวจสอบว่ามีการส่ง token ใหม่มาจากฟอร์มหรือไม่
+  if (server.hasArg("token")) {  // ตรวจสอบว่ามีการส่ง token ใหม่มาจากฟอร์ม
     lineNotifyToken = server.arg("token");  // อัปเดตตัวแปร lineNotifyToken
     Serial.println("LINE Notify Token อัปเดตเรียบร้อย: " + lineNotifyToken);
    
@@ -148,4 +161,3 @@ void handleUpdateToken() {
     server.send(400, "text/plain", "Bad Request: Token is missing");
   }
 }
-```
