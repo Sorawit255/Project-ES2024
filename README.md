@@ -4,27 +4,24 @@
 #include <WebServer.h>
 #include "FS.h"
 #include "SPIFFS.h"
-#include "html.h"  // รวมไฟล์ html.h
+#include "html.h"
 
 const int pingPin = 13; // Trig
 const int inPin = 12;   // Echo
 
-// กำหนด Wi-Fi Credentials
 const char* ssid = "Dragon";
 const char* password = "12345678";
 String lineNotifyToken = "goMw6x6A4hlet9170QyOn4DAFFmfNnu59h83rax8F9z"; 
 
 long lastNotified = 0;    
-const int notificationInterval = 10000; // หน่วงการแจ้งเตือน 10 วินาที
+const int notificationInterval = 100; 
 
 WebServer server(80); 
 long distanceCm = 0;   
-bool detecting = false; // ควบคุมการตรวจจับ
+bool detecting = false;
 
 void setup() {
   Serial.begin(9600);
- 
-  // เชื่อมต่อ WiFi
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -34,13 +31,12 @@ void setup() {
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 
-  // เริ่ม SPIFFS
   if(!SPIFFS.begin(true)){
     Serial.println("An Error has occurred while mounting SPIFFS");
     return;
   }
 
-  // กำหนดฟังก์ชันที่จะเรียกเมื่อเข้าเว็บเซิร์ฟเวอร์
+  // ฟังก์ชันที่จะเรียกเมื่อเข้าเว็บเซิร์ฟเวอร์
   server.on("/", handleRoot);   // หน้าหลัก
   server.on("/start", handleStart);  
   server.on("/stop", handleStop);    
@@ -65,7 +61,7 @@ void loop() {
     pinMode(inPin, INPUT);
     duration = pulseIn(inPin, HIGH);
     cm = microsecondsToCentimeters(duration);
-    distanceCm = cm; // แสดงระยะทางใน Serial Monitor
+    distanceCm = cm;
     Serial.print(cm);
     Serial.print(" cm");
     Serial.println();
@@ -73,7 +69,6 @@ void loop() {
     // บันทึกประวัติลง SPIFFS
     saveHistory("ตรวจพบวัตถุในระยะ " + String(cm) + " cm");
 
-    // ส่งการแจ้งเตือนหากระยะน้อยกว่า 100 cm และไม่มีการแจ้งเตือนซ้ำภายใน 10 วินาที
     if (cm < 100 && millis() - lastNotified > notificationInterval) {  
       sendLineNotify(cm);
       lastNotified = millis();
@@ -84,7 +79,6 @@ void loop() {
   delay(1000);
 }
 
-// ฟังก์ชันคำนวณระยะทาง
 long microsecondsToCentimeters(long microseconds) {
   return microseconds / 29 / 2;
 }
@@ -116,31 +110,31 @@ void sendLineNotify(long distance) {
   }
 }
 
-// ฟังก์ชันที่ใช้จัดการเมื่อเปิดเว็บเพจ
+
 void handleRoot() {
   String html = generateHTML(distanceCm);  // เรียกฟังก์ชันจาก html.h
   server.send(200, "text/html", html);  // ส่งเว็บเพจกลับไปยังคลายเอนต์
 }
 
-// ฟังก์ชันที่ใช้เมื่อกดปุ่ม Start
+// ปุ่ม Start
 void handleStart() {
-  detecting = true;  // เริ่มตรวจจับ
-  server.sendHeader("Location", "/");   // เปลี่ยนเส้นทางกลับไปที่หน้าเว็บหลัก
+  detecting = true;  
+  server.sendHeader("Location", "/");  
   server.send(303);
 }
 
-// ฟังก์ชันที่ใช้เมื่อกดปุ่ม Stop
+// ปุ่ม Stop
 void handleStop() {
-  detecting = false;  // หยุดตรวจจับ
-  server.sendHeader("Location", "/");   // เปลี่ยนเส้นทางกลับไปที่หน้าเว็บหลัก
+  detecting = false;  
+  server.sendHeader("Location", "/");   
   server.send(303);
 }
 
-// ฟังก์ชันที่ใช้จัดการเมื่อเปิดหน้าเว็บประวัติ
+// เปิดหน้าเว็บประวัติ
 void handleHistory() {
-  String history = readHistory();  // อ่านประวัติการตรวจจับจาก SPIFFS
-  String html = generateHistoryHTML(history);  // เรียกฟังก์ชันจาก html.h
-  server.send(200, "text/html", html);  // ส่งเว็บเพจกลับไปยังคลายเอนต์
+  String history = readHistory();  // อ่านประวัติจาก SPIFFS
+  String html = generateHistoryHTML(history); 
+  server.send(200, "text/html", html);  
 }
 
 // ฟังก์ชันบันทึกประวัติลงใน SPIFFS
