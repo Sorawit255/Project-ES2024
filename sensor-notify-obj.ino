@@ -40,6 +40,7 @@ void setup() {
   server.on("/start", handleStart);  
   server.on("/stop", handleStop);    
   server.on("/history", handleHistory); 
+  server.on("/clearHistory", HTTP_POST, handleClearHistory);
   server.on("/updateToken", HTTP_POST, handleUpdateToken); 
   server.begin();     
   Serial.println("HTTP server started");
@@ -129,13 +130,6 @@ void handleStop() {
   server.send(303);
 }
 
-// เปิดหน้าเว็บประวัติ
-void handleHistory() {
-  String history = readHistory();  // อ่านประวัติจาก SPIFFS
-  String html = generateHistoryHTML(history); 
-  server.send(200, "text/html", html);  
-}
-
 // ฟังก์ชันบันทึกประวัติลงใน SPIFFS
 void saveHistory(String data) {
   File file = SPIFFS.open("/history.txt", FILE_APPEND);
@@ -147,20 +141,58 @@ void saveHistory(String data) {
   file.close();
 }
 
-// ฟังก์ชันอ่านประวัติจาก SPIFFS
-String readHistory() {
+// ฟังก์ชันอ่านประวัติจาก SPIFFS โดยจำกัดจำนวนแถว
+String readHistory(int startLine = 0, int linesPerPage = 20) {
   File file = SPIFFS.open("/history.txt");
-  if(!file){
+  if (!file) {
     Serial.println("Failed to open file for reading");
     return "";
   }
+
   String history = "";
-  while(file.available()){
-    history += file.readString();
+  int currentLine = 0;
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    if (currentLine >= startLine && currentLine < startLine + linesPerPage) {
+      history += line + "\n";
+    }
+    currentLine++;
   }
   file.close();
   return history;
 }
+
+// ฟังก์ชันลบประวัติจาก SPIFFS
+void clearHistory() {
+  File file = SPIFFS.open("/history.txt", FILE_WRITE);
+  if (!file) {
+    Serial.println("Failed to open file for writing");
+    return;
+  }
+  file.print("");  // เขียนข้อมูลว่างลงไปในไฟล์เพื่อลบข้อมูลทั้งหมด
+  file.close();
+  Serial.println("History cleared");
+}
+
+// ฟังก์ชัน handle สำหรับการลบประวัติ
+void handleClearHistory() {
+  clearHistory();
+  server.sendHeader("Location", "/history");  
+  server.send(303);  // Redirect กลับไปยังหน้า history
+}
+
+// ฟังก์ชัน handleHistory ที่รองรับการแบ่งหน้า
+void handleHistory() {
+  int startLine = 0;
+  if (server.hasArg("page")) {  // ตรวจสอบว่ามีพารามิเตอร์ page ถูกส่งมาหรือไม่
+    startLine = server.arg("page").toInt() * 20;  // คำนวณแถวเริ่มต้นจากหมายเลขหน้า
+  }
+
+  String history = readHistory(startLine, 20);  // อ่านประวัติจาก SPIFFS โดยจำกัด 20 แถว
+  String html = generateHistoryHTML(history, startLine);  // ส่งแถวเริ่มต้นไปด้วย
+  server.send(200, "text/html", html);  
+}
+
 
 // ฟังก์ชันอัปเดต LINE Notify Token
 void handleUpdateToken() {
