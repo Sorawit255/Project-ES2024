@@ -6,7 +6,7 @@ String generateHTML(long distanceCm) {
   html += "<style>";
   html += "body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333; text-align: center; margin: 0; padding: 20px; }";
   html += "h1 { color: #2c3e50; font-size: 3em; }"; 
-  html += "p { font-size: 2.5em; }";
+  html += "p { font-size: 5em; }";
   html += "button { background-color: #3498db; color: white; border: none; padding: 20px 40px; font-size: 1.5em; cursor: pointer; margin: 15px; }"; 
   html += "button:hover { background-color: #2980b9; }";
   html += "form { display: inline-block; margin: 20px; }";
